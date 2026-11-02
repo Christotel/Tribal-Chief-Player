@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tribal Chief YouTube player</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    #player { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <!--
+    Tribal Chief's YouTube player page. Host this file on GitHub Pages (or any https site)
+    and put its link in youtubePlayerUrl in catalog.js. Tribal Chief shows this page
+    full-screen and sends it play, pause and seek commands from your remote.
+  -->
+  <div id="player"></div>
+  <script>
+    var params = new URLSearchParams(location.search);
+    var videoId = params.get('v') || '';
+    var startAt = parseInt(params.get('start') || '0', 10) || 0;
+    var player = null;
+
+    // The app runs from files on the TV, so its origin is "null" and messages
+    // must be sent with "*". Only playback state is sent, never anything private.
+    function send(msg) {
+      msg.marquee = 1;
+      if (window.parent !== window) window.parent.postMessage(msg, '*');
+    }
+
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) {
+      send({ event: 'error', code: 2 });
+    }
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        width: '100%',
+        height: '100%',
+        videoId: videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          disablekb: 1,
+          rel: 0,
+          playsinline: 1,
+          iv_load_policy: 3,
+          start: startAt
+        },
+        events: {
+          onReady: function () {
+            player.playVideo();
+            send({ event: 'ready', duration: player.getDuration() });
+          },
+          onStateChange: function (e) {
+            send({ event: 'state', state: e.data, time: player.getCurrentTime(), duration: player.getDuration() });
+          },
+          onError: function (e) {
+            send({ event: 'error', code: e.data });
+          }
+        }
+      });
+
+      setInterval(function () {
+        if (player && player.getCurrentTime) {
+          send({
+            event: 'time',
+            time: player.getCurrentTime(),
+            duration: player.getDuration(),
+            state: player.getPlayerState()
+          });
+        }
+      }, 500);
+    }
+
+    // Commands come only from the Tribal Chief app that contains this page.
+    window.addEventListener('message', function (e) {
+      if (e.source !== window.parent || !player) return;
+      var d = e.data || {};
+      if (!d.marquee) return;
+      if (d.cmd === 'play') player.playVideo();
+      else if (d.cmd === 'pause') player.pauseVideo();
+      else if (d.cmd === 'seek' && typeof d.value === 'number') player.seekTo(d.value, true);
+    });
+  </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
